@@ -27,25 +27,32 @@ use Win32::OLE::Variant;
 my %opt;
 my ( $opt_help, $opt_man, $opt_versions );
 
+# Defaults
+$opt{conflict} = 0;
+$opt{dir}      = cwd;
+$opt{ignore}   = 0;
+$opt{prompt}   = 0;
+$opt{regex}    = 0;
+
 GetOptions(
-    'attach!'          => \$opt{attach},
+    'a|attach!'        => \$opt{attach},
     'A|appointments:s' => \$opt{dates},
-    'conflict+'        => \$opt{conflict},
+    'c|conflict+'      => \$opt{conflict},
     'C|contacts:s'     => \$opt{contacts},
-    'directory=s'      => \$opt{dir},
+    'd|directory=s'    => \$opt{dir},
     'D|drafts:s'       => \$opt{drafts},
     'filter=s'         => \$opt{filter},
     'G|gal:s'          => \$opt{gal},
-    'ignorecase!'      => \$opt{ignore},
+    'i|ignorecase!'    => \$opt{ignore},
     'I|inbox:s'        => \$opt{emails},
     'J|journal:s'      => \$opt{journal},
     'list!'            => \$opt{list},
     'N|notes:s'        => \$opt{notes},
-    'output=s'         => \$opt{format},
+    'o|output=s'       => \$opt{format},
     'O|outbox:s'       => \$opt{outbox},
-    'prompt+'          => \$opt{prompt},
+    'p|prompt+'        => \$opt{prompt},
     'P|profile=s'      => \$opt{profile},
-    'subfolder=s'      => \$opt{subfolder},
+    's|subfolder=s'    => \$opt{subfolder},
     'S|sentitems:s'    => \$opt{sentitems},
     'T|tasks:s'        => \$opt{tasks},
     'x|regex!'         => \$opt{regex},
@@ -68,12 +75,12 @@ if ( defined $opt_versions ) {
       "    Getopt::Long        $Getopt::Long::VERSION\n",
       "    Pod::Usage          $Pod::Usage::VERSION\n",
 ########################################################
-# Start Additional USE
+      # Start Additional USE
 ########################################################
       "    Cwd                 $Cwd::VERSION\n",
       "    Win32::OLE          $Win32::OLE::VERSION\n",
 ########################################################
-# End Additional USE
+      # End Additional USE
 ########################################################
       "    Perl version        $]\n",
       "    Perl executable     $^X\n",
@@ -94,28 +101,28 @@ my $namespace = $outlook->GetNamespace("MAPI");
 my ( $parent_mbox, $folder ) = GetProfile( $namespace, \%opt );
 
 # subfolder provided - if not, defaults
-if ( !defined $opt{subfolder} ) {
-    if ( defined $opt{contacts} ) {
-        $opt{subfolder} = "Contacts";
-    } elsif ( defined $opt{gal} ) {
-        $opt{subfolder} = "user";
-    } elsif ( defined $opt{dates} ) {
-        $opt{subfolder} = "Calendar";
-    } elsif ( defined $opt{drafts} ) {
-        $opt{subfolder} = "Drafts";
-    } elsif ( defined $opt{outbox} ) {
-        $opt{subfolder} = "Outbox";
-    } elsif ( defined $opt{sentitems} ) {
-        $opt{subfolder} = "Sent Items";
-    } elsif ( defined $opt{deleteditems} ) {
-        $opt{subfolder} = "Deleted Items";
-    } elsif ( defined $opt{journal} ) {
-        $opt{subfolder} = "Journal";
-    } elsif ( defined $opt{notes} ) {
-        $opt{subfolder} = "Notes";
-    } elsif ( defined $opt{tasks} ) {
-        $opt{subfolder} = "Tasks";
-    } else {
+if ( not defined $opt{subfolder} ) {
+
+    my %choice = (
+        contacts     => 'Contacts',
+        dates        => 'Calendar',
+        deleteditems => 'Deleted Items',
+        drafts       => 'Drafts',
+        gal          => 'user',
+        journal      => 'Journal',
+        notes        => 'Notes',
+        outbox       => 'Outbox',
+        sentitems    => 'Sent Items',
+        tasks        => 'Tasks',
+    );
+
+    for my $k ( sort ( keys(%choice) ) ) {
+        if ( defined $opt{$k} ) {
+            $opt{subfolder} = $choice{$k};
+            last;
+        }
+    }
+    if ( not defined $opt{subfolder} ) {
         $opt{subfolder} = "Inbox";
     }
 }
@@ -134,19 +141,15 @@ if ( $opt{list} ) {
     exit;
 }
 
-if ( !defined $opt{attach} ) {
+if ( not defined $opt{attach} ) {
     $opt{attach} = 1;
 }
-$opt{conflict} = $opt{conflict} || 0;
-$opt{prompt}   = $opt{prompt}   || 0;
-$opt{ignore}   = $opt{ignore}   || 0;
-$opt{regex}    = $opt{regex}    || 0;
-$opt{dir}      = $opt{dir}      || cwd;
 
 # Does it end with a \ ?  If not, add one
 if ( $opt{dir} !~ /\\$/ ) {
     $opt{dir} = $opt{dir} . "\\";
 }
+
 # Does it start with a \ ?  If so, add the drive otherwise, it must
 # be off the local directory, so add the current path
 if ( $opt{dir} !~ /^[A-Za-z]:/ ) {
@@ -157,10 +160,13 @@ if ( $opt{dir} !~ /^[A-Za-z]:/ ) {
         $opt{dir} = cwd . "\\" . $opt{dir};
     }
 }
+
 # Replace all / with \ (must be \\ to escape the \)
 $opt{dir} =~ s/\//\\/g;
+
 # replace all \ with \\ so no errors later
 $opt{dir} =~ s/\\/\\\\/g;
+
 # Does directory exist?
 if ( !( -e $opt{dir} ) ) {
     print "$0: directory not found - $opt{dir}\n";
@@ -219,48 +225,36 @@ sub GetProfile {
         }
 
     } else {
-        if ( defined $args->{contacts} ) {
-            $parent_mbox = $namespace->GetDefaultFolder(olFolderContacts)
-              ->Parent->Name();
-            $folder = $namespace->GetDefaultFolder(olFolderContacts);
-        } elsif ( defined $args->{dates} ) {
-            $parent_mbox = $namespace->GetDefaultFolder(olFolderCalendar)
-              ->Parent->Name();
-            $folder = $namespace->GetDefaultFolder(olFolderCalendar);
-        } elsif ( defined $args->{drafts} ) {
-            $parent_mbox
-              = $namespace->GetDefaultFolder(olFolderDrafts)->Parent->Name();
-            $folder = $namespace->GetDefaultFolder(olFolderDrafts);
-        } elsif ( defined $args->{outbox} ) {
-            $parent_mbox
-              = $namespace->GetDefaultFolder(olFolderOutbox)->Parent->Name();
-            $folder = $namespace->GetDefaultFolder(olFolderOutbox);
-        } elsif ( defined $args->{sentitems} ) {
-            $parent_mbox = $namespace->GetDefaultFolder(olFolderSentMail)
-              ->Parent->Name();
-            $folder = $namespace->GetDefaultFolder(olFolderSentMail);
-        } elsif ( defined $args->{deleteditems} ) {
-            $parent_mbox = $namespace->GetDefaultFolder(olFolderDeletedItems)
-              ->Parent->Name();
-            $folder = $namespace->GetDefaultFolder(olFolderDeletedItems);
-        } elsif ( defined $args->{journal} ) {
-            $parent_mbox
-              = $namespace->GetDefaultFolder(olFolderJournal)->Parent->Name();
-            $folder = $namespace->GetDefaultFolder(olFolderJournal);
-        } elsif ( defined $args->{notes} ) {
-            $parent_mbox
-              = $namespace->GetDefaultFolder(olFolderNotes)->Parent->Name();
-            $folder = $namespace->GetDefaultFolder(olFolderNotes);
-        } elsif ( defined $args->{tasks} ) {
-            $parent_mbox
-              = $namespace->GetDefaultFolder(olFolderTasks)->Parent->Name();
-            $folder = $namespace->GetDefaultFolder(olFolderTasks);
-        } else {
+
+        my %choice = (
+            contacts     => olFolderContacts,
+            dates        => olFolderCalendar,
+            deleteditems => olFolderDeletedItems,
+            drafts       => olFolderDrafts,
+            journal      => olFolderJournal,
+            notes        => olFolderNotes,
+            outbox       => olFolderOutbox,
+            sentitems    => olFolderSentMail,
+            tasks        => olFolderTasks,
+        );
+
+        my $MATCH = 0;
+        for my $k ( sort ( keys(%choice) ) ) {
+            if ( defined $args->{$k} ) {
+                $parent_mbox = $namespace->GetDefaultFolder( $choice{$k} )
+                  ->Parent->Name();
+                $folder = $namespace->GetDefaultFolder( $choice{$k} );
+                $MATCH  = 1;
+                last;
+            }
+        }
+        if ( !$MATCH ) {
             $parent_mbox
               = $namespace->GetDefaultFolder(olFolderInbox)->Parent->Name();
             $folder = $namespace->GetDefaultFolder(olFolderInbox);
         }
     }
+
     return ( $parent_mbox, $folder );
 }
 
@@ -279,7 +273,7 @@ sub loop_folders {
     # Just relative path
     my @subfolders = split /\\/, $opt{subfolder};
 
-    if ( ( $#subfolders == 0 ) && ( $subfolders[0] eq $folder->Name ) ) {
+    if ( ( $#subfolders == 0 ) and ( $subfolders[0] eq $folder->Name ) ) {
         return $folder;
     }
 
@@ -298,7 +292,10 @@ sub loop_folders {
                     }
                 }
             }
-            if ( !$MATCH ) { return }
+            if ( !$MATCH ) {
+                printf "$0: folder not found - $opt{subfolder}\n";
+                exit 1;
+            }
         }
     }
 }
@@ -306,196 +303,88 @@ sub loop_folders {
 sub folder_list {
     my ( $namespace, $folder, $args ) = @_;
 
-    # contacts fields
-    if ( defined $args->{contacts} ) {
-        my $others = loop_folders($folder);
-        if ($others) {
-            if ( ( my $count = $others->Items->Count ) > 0 ) {
-                print "Contacts\n";
-                Print_Opts( $folder, 1 );
+    my %choice = (
+        contacts     => 'Contacts',
+        dates        => 'Calendar',
+        deleteditems => 'Deleted Items',
+        drafts       => 'Drafts',
+        journal      => 'Journal',
+        notes        => 'Notes',
+        outbox       => 'Outbox',
+        sentitems    => 'Sent Items',
+        tasks        => 'Tasks',
+    );
+
+    my $MATCH = 0;
+    for my $k ( sort ( keys(%choice) ) ) {
+        if ( defined $args->{$k} ) {
+            my $others = loop_folders($folder);
+            if ($others) {
+                if ( ( my $count = $others->Items->Count ) > 0 ) {
+                    print "$choice{$k}\n";
+                    Print_Opts( $folder, 1 );
+                } else {
+                    print "$0: No $choice{$k} found\n";
+                    exit 1;
+                }
             } else {
-                print "$0: No Contacts found\n";
+                print
+                  "$0: subfolder not found - $parent_mbox\\$opt{subfolder}\n";
                 exit 1;
             }
-        } else {
-            print "$0: subfolder not found - $parent_mbox\\$opt{subfolder}\n";
-            exit 1;
+            $MATCH = 1;
+            last;
         }
+    }
+    if ( !$MATCH ) {
+        if ( defined $args->{gal} ) {
+            print "Global Address List\n";
+            print "  User\n";
+            my $fields = getAbUserFields($namespace);
+            for ( @{$fields} ) {
+                print "    $_\n";
+            }
+            print "  Distribution List\n";
+            $fields = getAbDLFields($namespace);
+            for ( @{$fields} ) {
+                print "    $_\n";
+            }
 
-    } elsif ( defined $args->{gal} ) {
-        print "Global Address List\n";
-        print "  User\n";
-        my $fields = getAbUserFields($namespace);
-        for ( @{$fields} ) {
-            print "    $_\n";
-        }
-        print "  Distribution List\n";
-        $fields = getAbDLFields($namespace);
-        for ( @{$fields} ) {
-            print "    $_\n";
-        }
-
-        # calendar fields
-    } elsif ( defined $args->{dates} ) {
-        my $others = loop_folders($folder);
-        if ($others) {
-            if ( ( my $count = $others->{Items}->{Count} ) > 0 ) {
-                print "Calendar\n";
-                Print_Opts( $others, 1 );
+            # email fields
+        } elsif ( defined $args->{emails} ) {
+            my $others = loop_folders($folder);
+            if ($others) {
+                if ( ( my $count = $others->{Items}->{Count} ) > 0 ) {
+                    print "Inbox\n";
+                    Print_Opts( $others, 1 );
+                } else {
+                    print "$0: No Emails found\n";
+                    exit 1;
+                }
             } else {
-                print "$0: No Dates found\n";
+                print
+                  "$0: subfolder not found - $parent_mbox\\$opt{subfolder}\n";
                 exit 1;
             }
+
+            # folder listing (DEFAULT)
         } else {
-            print "$0: subfolder not found - $parent_mbox\\$opt{subfolder}\n";
-            exit 1;
-        }
+            for ( 1 .. $namespace->Folders->Count ) {
 
-        # drafts fields
-    } elsif ( defined $args->{drafts} ) {
-        my $others = loop_folders($folder);
-        if ($others) {
-            if ( ( my $count = $others->{Items}->{Count} ) > 0 ) {
-                print "Drafts\n";
-                Print_Opts( $others, 1 );
-            } else {
-                print "$0: No Drafts found\n";
-                exit 1;
+                if ( $namespace->Folders($_)->Name !~ /Public Folders/ ) {
+                    print "-------------\nProfile    : ",
+                      $namespace->Folders($_)->Name, "\nSubfolders :\n";
+                    Print_Subs( $namespace->Folders($_), 1 );
+                }
             }
-        } else {
-            print "$0: subfolder not found - $parent_mbox\\$opt{subfolder}\n";
-            exit 1;
-        }
 
-        # outbox fields
-    } elsif ( defined $args->{outbox} ) {
-        my $others = loop_folders($folder);
-        if ($others) {
-            if ( ( my $count = $others->{Items}->{Count} ) > 0 ) {
-                print "Outbox\n";
-                Print_Opts( $others, 1 );
-            } else {
-                print "$0: No Emails found\n";
-                exit 1;
-            }
-        } else {
-            print "$0: subfolder not found - $parent_mbox\\$opt{subfolder}\n";
-            exit 1;
-        }
-
-        # sent items fields
-    } elsif ( defined $args->{sentitems} ) {
-        my $others = loop_folders($folder);
-        if ($others) {
-            if ( ( my $count = $others->{Items}->{Count} ) > 0 ) {
-                print "Sent Items\n";
-                Print_Opts( $others, 1 );
-            } else {
-                print "$0: No Sent Items found\n";
-                exit 1;
-            }
-        } else {
-            print "$0: subfolder not found - $parent_mbox\\$opt{subfolder}\n";
-            exit 1;
-        }
-
-        # deleted items fields
-    } elsif ( defined $args->{deleteditems} ) {
-        my $others = loop_folders($folder);
-        if ($others) {
-            if ( ( my $count = $others->{Items}->{Count} ) > 0 ) {
-                print "Deleted Items\n";
-                Print_Opts( $others, 1 );
-            } else {
-                print "$0: No Deleted Items found\n";
-                exit 1;
-            }
-        } else {
-            print "$0: subfolder not found - $parent_mbox\\$opt{subfolder}\n";
-            exit 1;
-        }
-
-        # email fields
-    } elsif ( defined $args->{emails} ) {
-        my $others = loop_folders($folder);
-        if ($others) {
-            if ( ( my $count = $others->{Items}->{Count} ) > 0 ) {
-                print "Inbox\n";
-                Print_Opts( $others, 1 );
-            } else {
-                print "$0: No Emails found\n";
-                exit 1;
-            }
-        } else {
-            print "$0: subfolder not found - $parent_mbox\\$opt{subfolder}\n";
-            exit 1;
-        }
-
-        # journal fields
-    } elsif ( defined $args->{journal} ) {
-        my $others = loop_folders($folder);
-        if ($others) {
-            if ( ( my $count = $others->{Items}->{Count} ) > 0 ) {
-                print "Journal\n";
-                Print_Opts( $others, 1 );
-            } else {
-                print "$0: No Journal entries found\n";
-                exit 1;
-            }
-        } else {
-            print "$0: subfolder not found - $parent_mbox\\$opt{subfolder}\n";
-            exit 1;
-        }
-
-        # notes fields
-    } elsif ( defined $args->{notes} ) {
-        my $others = loop_folders($folder);
-        if ($others) {
-            if ( ( my $count = $others->{Items}->{Count} ) > 0 ) {
-                print "Notes\n";
-                Print_Opts( $others, 1 );
-            } else {
-                print "$0: No Notes found\n";
-                exit 1;
-            }
-        } else {
-            print "$0: subfolder not found - $parent_mbox\\$opt{subfolder}\n";
-            exit 1;
-        }
-
-        # tasks fields
-    } elsif ( defined $args->{tasks} ) {
-        my $others = loop_folders($folder);
-        if ($others) {
-            if ( ( my $count = $others->{Items}->{Count} ) > 0 ) {
-                print "Tasks\n";
-                Print_Opts( $others, 1 );
-            } else {
-                print "$0: No Tasks found\n";
-                exit 1;
-            }
-        } else {
-            print "$0: subfolder not found - $parent_mbox\\$opt{subfolder}\n";
-            exit 1;
-        }
-
-        # folder listing (DEFAULT)
-    } else {
-        for ( 1 .. $namespace->Folders->Count ) {
-
-            if ( $namespace->Folders($_)->Name !~ /Public Folders/ ) {
-                print "-------------\nProfile    : ",
-                  $namespace->Folders($_)->Name, "\nSubfolders :\n";
-                Print_Subs( $namespace->Folders($_), 1 );
-            }
-        }
-
-        print "-------------\nProfile    : Address Books\nSubfolders :\n";
-        for my $cnt ( 1 .. $namespace->AddressLists->Count ) {
-            if ( $namespace->AddressLists->Item($cnt)->Name
-                !~ /Public Folders/ ) {
-                print "    "
-                  . $namespace->AddressLists->Item($cnt)->Name . "\n";
+            print "-------------\nProfile    : Address Books\nSubfolders :\n";
+            for my $cnt ( 1 .. $namespace->AddressLists->Count ) {
+                if ( $namespace->AddressLists->Item($cnt)->Name
+                    !~ /Public Folders/ ) {
+                    print "    "
+                      . $namespace->AddressLists->Item($cnt)->Name . "\n";
+                }
             }
         }
     }
@@ -542,84 +431,37 @@ sub other_list {
     }
     my $filter = $args->{filter};
 
-    # Contacts
-    if ( defined $args->{contacts} ) {
-        $options = $args->{contacts};
-        if ( !defined $args->{filter} ) {
-            $filter = 'FullName';
-        }
+    my %choice = (
+        contacts     => 'FullName',
+        dates        => 'Subject',
+        deleteditems => 'Subject',
+        drafts       => 'To',
+        gal          => 'Name',
+        journal      => 'Subject',
+        notes        => 'Subject',
+        outbox       => 'To',
+        sentitems    => 'To',
+        tasks        => 'Subject',
+    );
 
-        # GAL
-    } elsif ( defined $args->{gal} ) {
-        $options = $args->{gal};
-        if ( !defined $args->{filter} ) {
-            $filter = 'Name';
+    my $MATCH = 0;
+    for my $k ( sort ( keys(%choice) ) ) {
+        if ( defined $args->{$k} ) {
+            $options = $args->{$k};
+            if ( not defined $args->{filter} ) {
+                $filter = $choice{$k};
+            }
+            $MATCH = 1;
+            last;
         }
-
-        # Calendar
-    } elsif ( defined $args->{dates} ) {
-        $options = $args->{dates};
-        if ( !defined $args->{filter} ) {
-            $filter = 'Subject';
-        }
-
-        # Drafts
-    } elsif ( defined $args->{drafts} ) {
-        $options = $args->{drafts};
-        if ( !defined $args->{filter} ) {
-            $filter = 'To';
-        }
-
-        # Outbox
-    } elsif ( defined $args->{outbox} ) {
-        $options = $args->{outbox};
-        if ( !defined $args->{filter} ) {
-            $filter = 'To';
-        }
-
-        # Sent Items
-    } elsif ( defined $args->{sentitems} ) {
-        $options = $args->{sentitems};
-        if ( !defined $args->{filter} ) {
-            $filter = 'To';
-        }
-
-        # Deleted Items
-    } elsif ( defined $args->{deleteditems} ) {
-        $options = $args->{deleteditems};
-        if ( !defined $args->{filter} ) {
-            $filter = 'Subject';
-        }
-
-        # Journal
-    } elsif ( defined $args->{journal} ) {
-        $options = $args->{journal};
-        if ( !defined $args->{filter} ) {
-            $filter = 'Subject';
-        }
-
-        # Notes
-    } elsif ( defined $args->{notes} ) {
-        $options = $args->{notes};
-        if ( !defined $args->{filter} ) {
-            $filter = 'Subject';
-        }
-
-        # Tasks
-    } elsif ( defined $args->{tasks} ) {
-        $options = $args->{tasks};
-        if ( !defined $args->{filter} ) {
-            $filter = 'Subject';
-        }
-
-        # Emails (DEFAULT)
-    } else {
+    }
+    if ( !$MATCH ) {
 
         # This is default options so may not be specified as -I
         # Need to populate values if not specifically -I
         $options = $args->{emails} || '';
         $args->{emails} = $args->{emails} || '';
-        if ( !defined $args->{filter} ) {
+        if ( not defined $args->{filter} ) {
             $filter = 'SenderName';
         }
     }
@@ -648,12 +490,12 @@ sub other_list {
 
               # Tab-delimited
         } elsif ( ( $args->{format} =~ /^tab$/i )
-            || ( $args->{format} =~ /^txt$/i ) ) {
+            or ( $args->{format} =~ /^txt$/i ) ) {
             $format = 'tab'
 
               # output Tab-delimited file
         } elsif ( ( $args->{format} =~ /\.tab$/i )
-            || ( $args->{format} =~ /\.txt$/i ) ) {
+            or ( $args->{format} =~ /\.txt$/i ) ) {
             $format = 'tabfile';
             if ( !( open( $OUTFILE, '>', "$args->{format}" ) ) ) {
                 print "$0: Cannot open output file - $args->{format}\n";
@@ -674,7 +516,7 @@ sub other_list {
     }
 
     # If not specified, get them all
-    if ( ( @opts == 0 ) && ( $format ne '' ) ) {
+    if ( ( @opts == 0 ) and ( $format ne '' ) ) {
         if ( defined $args->{gal} ) {
             if ( $args->{subfolder} eq "user" ) {
                 my $r = getAbUserFields($namespace);
@@ -748,7 +590,7 @@ sub other_list {
         }
 
         # Header
-        if ( ( $k == 1 ) && ( $format =~ /file$/ ) ) {
+        if ( ( $k == 1 ) and ( $format =~ /file$/ ) ) {
             printf $OUT "%s\n", join ',', @opts;
         }
 
@@ -779,13 +621,13 @@ sub other_list {
                 }
             }
         }
-        print $OUT "\n" if ( ( $format ne 'list' ) && ( $i > 0 ) );
+        print $OUT "\n" if ( ( $format ne 'list' ) and ( $i > 0 ) );
 
         # Attachments
         # Want attachments
         if (    $args->{attach}
-            and !defined( $args->{notes} )
-            and !defined( $args->{gal} ) ) {
+            and not defined $args->{notes}
+            and not defined $args->{gal} ) {
             my $attach = $other->Attachments();
 
             # are there any
@@ -794,7 +636,7 @@ sub other_list {
 
                 # user want prompting per item
                 if (( $args->{prompt} >= 2 )
-                    && !get_answer(
+                    and !get_answer(
                         "Examine " . $attach->Count . " attachments?"
                     )
                   ) {
@@ -808,7 +650,7 @@ sub other_list {
 
                     # user want prompting per attachment
                     if ($args->{prompt}
-                        && !get_answer(
+                        and !get_answer(
                             "Save attachment:  \"" . $filename . "\""
                         )
                       ) {
@@ -845,17 +687,27 @@ sub other_list {
                             $saveas
                               .= "."
                               . ( $time[5] + 1900 )
-                              . ( ( ( $time[4] + 1 ) < 10 )
+                              . (
+                                  ( ( $time[4] + 1 ) < 10 )
                                 ? ( "0" . ( $time[4] + 1 ) )
-                                : ( $time[4] + 1 ) )
-                              . ( ( $time[3] < 10 ) ? ( "0" . $time[3] )
-                                : $time[3] )
-                              . ( ( $time[2] < 10 ) ? ( "0" . $time[2] )
-                                : $time[2] )
-                              . ( ( $time[1] < 10 ) ? ( "0" . $time[1] )
-                                : $time[1] )
-                              . ( ( $time[0] < 10 ) ? ( "0" . $time[0] )
-                                : $time[0] );
+                                : ( $time[4] + 1 )
+                              )
+                              . (
+                                ( $time[3] < 10 ) ? ( "0" . $time[3] )
+                                : $time[3]
+                              )
+                              . (
+                                ( $time[2] < 10 ) ? ( "0" . $time[2] )
+                                : $time[2]
+                              )
+                              . (
+                                ( $time[1] < 10 ) ? ( "0" . $time[1] )
+                                : $time[1]
+                              )
+                              . (
+                                ( $time[0] < 10 ) ? ( "0" . $time[0] )
+                                : $time[0]
+                              );
                             print "Saving as:  $saveas\n";
                         }
 
@@ -972,8 +824,8 @@ The following options select the scope.
  --drafts       prints only named fields.  Default is print no fields
                 unless -o defined.
 
- -G [n[,n...]]  List Global Address List.  Optional comma separated list 
- --gal          of fields prints only named fields.  Default is print no 
+ -G [n[,n...]]  List Global Address List.  Optional comma separated list
+ --gal          of fields prints only named fields.  Default is print no
                 fields unless -o defined.
 
  -I [n[,n...]]  List emails.  Optional comma separated list of fields
@@ -1057,7 +909,7 @@ The following options control the operation of the script.
 
  -s folder      Outlook subfolder name to search emails for attachments.
  --subfolder    Case sensitive.
-                In case of -G, valid values are `user' or `list' for User 
+                In case of -G, valid values are `user' or `list' for User
                 and Distribution List respectively.
                 DEFAULT:  (or not specified) Inbox.
 
@@ -1136,7 +988,7 @@ If you don't know what that means visit L<http://perl.com/>.
 
 =head1 AUTHOR
 
-Copyright (C) Michael Vincent 2008-2015
+Copyright (C) Michael Vincent 2008-2017
 
 L<http://www.VinsWorld.com>
 
