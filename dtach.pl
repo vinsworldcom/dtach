@@ -197,11 +197,7 @@ if ($subfolder) {
 other_list( $subfolder, \%opt, \@ARGV );
 
 ########################################################
-# End Program
-########################################################
-
-########################################################
-# Begin Subroutines
+# Start Subs
 ########################################################
 
 sub GetProfile {
@@ -684,30 +680,7 @@ sub other_list {
 
                             # Get a unique filename by appending date
                             my @time = localtime();
-                            $saveas
-                              .= "."
-                              . ( $time[5] + 1900 )
-                              . (
-                                  ( ( $time[4] + 1 ) < 10 )
-                                ? ( "0" . ( $time[4] + 1 ) )
-                                : ( $time[4] + 1 )
-                              )
-                              . (
-                                ( $time[3] < 10 ) ? ( "0" . $time[3] )
-                                : $time[3]
-                              )
-                              . (
-                                ( $time[2] < 10 ) ? ( "0" . $time[2] )
-                                : $time[2]
-                              )
-                              . (
-                                ( $time[1] < 10 ) ? ( "0" . $time[1] )
-                                : $time[1]
-                              )
-                              . (
-                                ( $time[0] < 10 ) ? ( "0" . $time[0] )
-                                : $time[0]
-                              );
+                            $saveas .= "." . yyyymmddhhmmss();
                             print "Saving as:  $saveas\n";
                         }
 
@@ -784,15 +757,22 @@ sub getAbDLFields {
     return \@ret;
 }
 
-########################################################
-# End Program
-########################################################
+sub yyyymmddhhmmss {
+    my @time = localtime();
+    return (
+        ( $time[5] + 1900 )
+        . (   ( ( $time[4] + 1 ) < 10 )
+            ? ( "0" . ( $time[4] + 1 ) )
+            : ( $time[4] + 1 )
+          )
+          . ( ( $time[3] < 10 ) ? ( "0" . $time[3] ) : $time[3] )
+          . ( ( $time[2] < 10 ) ? ( "0" . $time[2] ) : $time[2] )
+          . ( ( $time[1] < 10 ) ? ( "0" . $time[1] ) : $time[1] )
+          . ( ( $time[0] < 10 ) ? ( "0" . $time[0] ) : $time[0] )
+    );
+}
 
 __END__
-
-########################################################
-# Start POD
-########################################################
 
 =head1 NAME
 
